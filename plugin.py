@@ -62,7 +62,7 @@ logger = logging.getLogger('PagerDutyIntegration')
 
 registry = BotFactoryRegistryWrapper()
 
-es_doc_type = 'PagerDutyIncident'
+es_doc_type = 'incident'
 es_index_name = 'divvy_pagerduty_incidents'
 document_store = 'default'  # Name of documentstore configuration to use
 
