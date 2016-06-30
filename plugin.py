@@ -63,7 +63,7 @@ logger = logging.getLogger('PagerDutyIntegration')
 registry = BotFactoryRegistryWrapper()
 
 es_doc_type = 'PagerDutyIncident'
-es_index_name = 'divvy.pagerduty'
+es_index_name = 'divvy_pagerduty_incidents'
 document_store = 'default'  # Name of documentstore configuration to use
 
 es_connection = DivvyDb.Elasticsearch.get_connection(document_store)  # TODO: Use a tracker
