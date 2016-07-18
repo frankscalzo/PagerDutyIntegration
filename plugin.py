@@ -8,7 +8,7 @@ from DivvyResource.Resources import DivvyPlugin
 from DivvyBotfactory.registry import BotFactoryRegistryWrapper
 from DivvyUtils.field_definition import StringField
 from DivvyUtils import web_requests
-import DivvyDb
+from DivvyDb import Elasticsearch
 
 
 
@@ -66,9 +66,9 @@ es_doc_type = 'incident'
 es_index_name = 'divvy_pagerduty_incidents'
 document_store = 'default'  # Name of documentstore configuration to use
 
-es_connection = DivvyDb.Elasticsearch.get_connection(document_store)  # TODO: Use a tracker
+es_connection = Elasticsearch.get_connection(document_store)  # TODO: Use a tracker
 
-DivvyDb.Elasticsearch.require_template(
+Elasticsearch.require_template(
     doc_store_name=document_store,
     template_name="pagerduty_template",
     template_data={
