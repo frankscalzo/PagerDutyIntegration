@@ -34,7 +34,7 @@ setting_client_url = GlobalSetting(
     display_name='Client URL',
     type_hint='string',
     description='Client URL to provide in incident trigger requests sent to PagerDuty.',
-    default_value='https://events.pagerduty.com/generic/2010-04-15/create_event.json'
+    default_value='http://www.divvycloud.com'
 ).get_for_resource(DivvyPlugin.get_current_plugin())
 setting_api_url = GlobalSetting(
     name='divvy.pagerdutyintegration.api_url',
