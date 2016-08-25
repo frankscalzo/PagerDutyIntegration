@@ -149,7 +149,6 @@ def get_headers():
 def pager_duty_trigger(event, bot, settings):
     incident_key = get_incident_key(bot, event)
     if not get_incident_exists(es_connection, incident_key):
-        logger.error('[TRIGGERED]')
         # Get a description string for the incident.
         description = settings.get(
             'description', 'Event created by DivvyCloud application.'
@@ -195,7 +194,6 @@ def pager_duty_trigger(event, bot, settings):
 def pager_duty_resolve(event, bot, settings):
     incident_key = get_incident_key(bot, event)
     if get_incident_exists(es_connection, incident_key):
-        logger.error('resolving')
         # Get a description string for the incident.
         description = settings.get(
             'description', 'Event created by DivvyCloud application.'
