@@ -1,6 +1,7 @@
 import logging
 import elasticsearch
 import simplejson as json
+from datetime import datetime
 
 from DivvyPlugins.plugin_metadata import PluginMetadata
 from DivvyPlugins.settings import GlobalSetting
@@ -76,6 +77,7 @@ Elasticsearch.require_template(
         "template": es_index_name,
         "mappings": {
             es_doc_type: {
+                "dynamic": False,
                 "_ttl": {
                     "enabled": True,
                     "default": "7d"
@@ -96,6 +98,9 @@ Elasticsearch.require_template(
                     'description': {
                         "index": "not_analyzed",
                         "type": "string"
+                    },
+                    "creation_time": {
+                        "type": "date"
                     }
                 }
             }
@@ -143,48 +148,87 @@ def get_headers():
 )
 def pager_duty_trigger(event, bot, settings):
     incident_key = get_incident_key(bot, event)
-    # Get a description string for the incident.
-    description = settings.get(
-        'description', 'Event created by DivvyCloud application.'
-    )
-    # Payload for the API call.
-    payload = json.dumps({
-        'service_key': setting_service_key,
-        'event_type': 'trigger',
-        'incident_key': incident_key,
-        'description': description,
-        'details': event._asdict(),
-        'client': 'DivvyCloud',
-        'client_url': setting_client_url,
-    })
-    # Callback to record in ES the triggered incident.
-    def upon_success(response):
-        es_connection.index(  # TODO: Batch using a tracker
-            index=es_index_name,
-            doc_type=es_doc_type,
-            id=incident_key,
-            body={
-                'bot_resource_id': str(bot.resource_id),
-                'resource_id': str(event.resource.resource_id),
-                'description': description
-            }
+    if not get_incident_exists(es_connection, incident_key):
+        logger.error('[TRIGGERED]')
+        # Get a description string for the incident.
+        description = settings.get(
+            'description', 'Event created by DivvyCloud application.'
         )
-    # Response failure callback.
-    def upon_failure(response):
-        logger.error('Failed to trigger PagerDuty incident %s.', incident_key)
-        logger.error(response.content)
-    # Actually make the API call.
-    web_requests.post_threaded(
-        url=setting_api_url,
-        headers=get_headers(),
-        payload=payload,
-        upon_success=upon_success,
-        upon_failure=upon_failure
-    )
+        # Payload for the API call.
+        payload = json.dumps({
+            'service_key': setting_service_key,
+            'event_type': 'trigger',
+            'incident_key': incident_key,
+            'description': description,
+            'details': event._asdict(),
+            'client': 'DivvyCloud',
+            'client_url': setting_client_url
+        })
+        # Callback to record in ES the triggered incident.
+        def upon_success(response):
+            es_connection.index(  # TODO: Batch using a tracker
+                index=es_index_name,
+                doc_type=es_doc_type,
+                id=incident_key,
+                body={
+                    'bot_resource_id': str(bot.resource_id),
+                    'resource_id': str(event.resource.resource_id),
+                    'description': description,
+                    'creation_time': datetime.utcnow()
+                }
+            )
+        # Response failure callback.
+        def upon_failure(response):
+            logger.error('Failed to trigger PagerDuty incident %s.', incident_key)
+            logger.error(response.content)
+        # Actually make the API call.
+        web_requests.post_threaded(
+            url=setting_api_url,
+            headers=get_headers(),
+            payload=payload,
+            upon_success=upon_success,
+            upon_failure=upon_failure
+        )
+
 
 @registry.complement('divvy.action.pager_duty_incident')
 def pager_duty_resolve(event, bot, settings):
     incident_key = get_incident_key(bot, event)
+    if get_incident_exists(es_connection, incident_key):
+        logger.error('resolving')
+        # Get a description string for the incident.
+        description = settings.get(
+            'description', 'Event created by DivvyCloud application.'
+        )
+        payload = json.dumps({
+            'service_key': setting_service_key,
+            'event_type': 'resolve',
+            'incident_key': incident_key,
+            'description': 'Resolved: %s' % description,
+            'details': event._asdict(),
+            'client': 'DivvyCloud',
+            'client_url': setting_client_url,
+        })
+        def upon_success(response):
+            es_connection.delete(
+                index=es_index_name,
+                doc_type=es_doc_type,
+                id=incident_key
+            )
+        def upon_failure(response):
+            logger.error('Failed to resolve PagerDuty incident %s.', incident_key)
+            logger.error(response.content)
+        web_requests.post_threaded(
+            url=setting_api_url,
+            headers=get_headers(),
+            payload=payload,
+            upon_success=upon_success,
+            upon_failure=upon_failure
+        )
+
+
+
+def get_incident_document(es_connection, incident_key):
     try:
         result = es_connection.get(  # TODO: Batching
             index=es_index_name,
@@ -193,38 +237,14 @@ def pager_duty_resolve(event, bot, settings):
             _source=False
         )
     except elasticsearch.exceptions.NotFoundError:
-        pass  # Index doesn't exist yet
+        return None  # Index doesn't exist yet
     else:
-        if result is not None:
-            # Get a description string for the incident.
-            description = settings.get(
-                'description', 'Event created by DivvyCloud application.'
-            )
-            payload = json.dumps({
-                'service_key': setting_service_key,
-                'event_type': 'resolve',
-                'incident_key': incident_key,
-                'description': 'Resolved: %s' % description,
-                'details': event._asdict(),
-                'client': 'DivvyCloud',
-                'client_url': setting_client_url,
-            })
-            def upon_success(response):
-                es_connection.delete(
-                    index=es_index_name,
-                    doc_type=es_doc_type,
-                    id=incident_key
-                )
-            def upon_failure(response):
-                logger.error('Failed to resolve PagerDuty incident %s.', incident_key)
-                logger.error(response.content)
-            web_requests.post_threaded(
-                url=setting_api_url,
-                headers=get_headers(),
-                payload=payload,
-                upon_success=upon_success,
-                upon_failure=upon_failure
-            )
+        return result
+        
+
+def get_incident_exists(es_connection, incident_key):
+    return get_incident_document(es_connection, incident_key) is not None
+    
 
 
 
